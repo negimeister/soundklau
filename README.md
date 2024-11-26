@@ -1,5 +1,5 @@
 # Soundklau
-Negimeister's semi-automatic Soundcloud track downloader and processor.
+A semi-automatic Soundcloud track downloader and processor. Kinda half works so far
 
 ## Flow
 
@@ -9,3 +9,5 @@ Negimeister's semi-automatic Soundcloud track downloader and processor.
 - Download where available
 - Prompt otherwise
 - Figure out tags
+
+I have no idea how to python. send help
