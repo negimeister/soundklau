@@ -13,3 +13,5 @@ class LikedTrack(Base):
     downloadable = Column(Boolean, nullable=False)
     purchase_url = Column(String, nullable=True)
     description = Column(String, nullable=True)
+    state = Column(String, nullable=False)
+    liked_at = Column(String, nullable=False)

@@ -25,7 +25,9 @@ def store_liked_tracks(likes):
                 permalink_url=track.get('permalink_url', ''),
                 downloadable=track.get('downloadable', False) and track.get('has_downloads_left', False),
                 purchase_url=track.get('purchase_url', None),
-                description=track.get('description', None)
+                description=track.get('description', None),
+                state='new',
+                liked_at=like['created_at']
             )
             session.add(liked_track)
             count+=1
@@ -42,25 +44,46 @@ def get_all_stored_tracks():
         # Query all records from the LikedTrack table
         tracks = session.query(LikedTrack).all()
         
-        # Convert the list of LikedTrack objects to a list of dictionaries for easier handling
-        track_list = [
-            {
-                'id': track.id,
-                'title': track.title,
-                'username': track.username,
-                'permalink_url': track.permalink_url,
-                'downloadable': track.downloadable,
-                'purchase_url': track.purchase_url,
-                'description': track.description
-            }
-            for track in tracks
-        ]
         
-        return track_list
+        return tracks
     
     except Exception as e:
         print(f"Error retrieving tracks: {e}")
         return []
     
+    finally:
+        session.close()
+
+def update_track_state(track_id, new_state):
+    session = SessionLocal()
+    
+    try:
+        # Query the record from the LikedTrack table
+        track = session.query(LikedTrack).filter_by(id=track_id).first()
+        
+        # Update the state of the track
+        if track:
+            track.state = new_state
+            session.commit()
+        else:
+            print(f"Track {track_id} not found")
+    
+    except Exception as e:
+        print(f"Error updating track state: {e}")
+    
+    finally:
+        session.close()
+
+def find_tracks_by_state(state):
+    session = SessionLocal()
+    
+    try:
+        # Query all records from the LikedTrack table with the specified state
+        tracks = session.query(LikedTrack).filter_by(state=state).all()
+        return tracks
+    
+    except Exception as e:
+        print(f"Error finding tracks by state: {e}")
+        return []
     finally:
         session.close()

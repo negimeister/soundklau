@@ -3,8 +3,49 @@ from . import soundcloud
 from .models import LikedTrack
 from . import db
 import re
+from . import utils
 
 link_regex = r"https?:\/\/.*\s"
+
+def download_track(track):
+    url = None
+    description_matches = re.findall(link_regex, track.description)
+    utils.print_song_details(track.title, track.username, track.permalink_url)
+    if track.downloadable:
+        print("Track has native download. Downloading it now...")
+        filename = soundcloud.download_track(track.id)
+        print(f"Downloaded as {filename}")
+    else:
+        if track.purchase_url is not None:
+            print(f"Track has a purchase URL: {track.purchase_url}")
+        else:
+            print("Found the following links in the description:")
+            utils.print_urls(description_matches)
+        while True:
+            answer = input("Did you find a download?(y/n) ")
+            if answer.lower() in ['y', 'yes']:
+                print("nice")
+                db.update_track_state(track.id, 'downloaded')
+                break
+            elif answer.lower() in ['n', 'no']:
+                print("bummer")
+                break
+            else:
+                print("Please enter 'y' or 'n'")
+
+    # try:
+        
+        
+    #     elif 'purchase_url' in track and track['purchase_url'] is not None:
+    #         url = track['purchase_url']
+    #         url = description_matches
+    #     else:
+    #         url = description_matches + [track['permalink_url']]
+    #     print(f'{track["title"]}: {url}')
+    # except Exception as e:
+    #     print(f"Error processing track {track['title']}: {e}")
+    #     continue
+
 
 def main():
     parser = argparse.ArgumentParser(description="SoundKlau: A SoundCloud download and track import tool")
@@ -25,21 +66,8 @@ def main():
         db.store_liked_tracks(likes)
 
     
-    tracks = db.get_all_stored_tracks()
-    print(f"Found {len(tracks)} tracks")
+    tracks = db.find_tracks_by_state('new')
+    print(f"Found {len(tracks)} new tracks")
     for track in tracks:
-        url = None
-        try:
-            description_matches = re.findall(link_regex, track['description'])
-            if track['downloadable']:
-                filename = soundcloud.download_track(track['id'])
-                url = f"Downloaded as {filename}"
-            elif 'purchase_url' in track and track['purchase_url'] is not None:
-                url = track['purchase_url']
-                url = description_matches
-            else:
-                url = description_matches + [track['permalink_url']]
-            print(f'{track["title"]}: {url}')
-        except Exception as e:
-            print(f"Error processing track {track['title']}: {e}")
-            continue
+        download_track(track)
+        
