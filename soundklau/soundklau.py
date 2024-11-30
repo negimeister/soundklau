@@ -4,6 +4,10 @@ from .models import LikedTrack
 from . import db
 import re
 from . import utils
+import ffmpeg
+import os
+from mutagen.flac import FLAC
+
 
 link_regex = r"https?:\/\/.*\s"
 
@@ -13,38 +17,80 @@ def download_track(track):
     utils.print_song_details(track.title, track.username, track.permalink_url)
     if track.downloadable:
         print("Track has native download. Downloading it now...")
-        filename = soundcloud.download_track(track.id)
-        print(f"Downloaded as {filename}")
+        folder = "downloads"
+        filename = soundcloud.download_track(track.id, folder)
+        print(f"Downloaded to {filename}")
+        db.update_track_download_path(track.id, os.path.join(os.path.abspath(filename)))
+        db.update_track_state(track.id, 'downloaded')
     else:
         if track.purchase_url is not None:
             print(f"Track has a purchase URL: {track.purchase_url}")
         else:
             print("Found the following links in the description:")
             utils.print_urls(description_matches)
-        while True:
-            answer = input("Did you find a download?(y/n) ")
-            if answer.lower() in ['y', 'yes']:
-                print("nice")
-                db.update_track_state(track.id, 'downloaded')
-                break
-            elif answer.lower() in ['n', 'no']:
-                print("bummer")
-                break
-            else:
-                print("Please enter 'y' or 'n'")
+        if(utils.prompt_yes_no("Did you find a download?")):
+            path = input("Provide the path to the downloaded file or press Enter it later: ").strip("'")
+            db.update_track_download_path(track.id, os.path.abspath(path))
+            db.update_track_state(track.id, 'downloaded')
+        else:
+            db.update_track_state(track.id, 'not_downloadable')
 
-    # try:
-        
-        
-    #     elif 'purchase_url' in track and track['purchase_url'] is not None:
-    #         url = track['purchase_url']
-    #         url = description_matches
-    #     else:
-    #         url = description_matches + [track['permalink_url']]
-    #     print(f'{track["title"]}: {url}')
-    # except Exception as e:
-    #     print(f"Error processing track {track['title']}: {e}")
-    #     continue
+def is_track_download_available(track):
+    if track.download_path is None:
+        return False
+    return os.path.exists(track.download_path)
+
+def convert_track(track):
+    if(is_track_download_available(track)):
+        if os.path.splitext(track.download_path)[1] == ".flac":
+            db.update_track_state(track.id, 'converted')
+            return
+        old_name = track.download_path
+        new_name = os.path.splitext(track.download_path)[0] + ".flac"
+        print(f"Converting track {track.title}")
+        try:
+            ffmpeg.input(track.download_path).output(new_name, map_metadata="0", loglevel="quiet").run()
+        except Exception as e:
+            print(f"Error converting track {track.title}: {e}")
+            db.update_track_state(track.id, 'conversion_error')
+            return
+        db.update_track_download_path(track.id, new_name)
+        db.update_track_state(track.id, 'converted')
+        os.remove(old_name)
+    else:
+        print(f"Track {track.title} is not downloaded yet or the file is missing.")
+        if(utils.prompt_yes_no("Do you want to download it now?")):
+            download_track(track)
+            track = db.find_track_by_id(track.id)
+            convert_track(track)
+
+
+def tag_track(track):
+    if not is_track_download_available(track):
+        print(f"Track {track.title} is not downloaded yet or the file is missing.")
+        if(utils.prompt_yes_no("Do you want to download it now?")):
+            download_track(track)
+            track = db.find_track_by_id(track.id)
+            convert_track(track)
+        else:
+            return
+
+    utils.print_song_details(track.title, track.username, track.permalink_url)
+    flac = FLAC(track.download_path)
+    artist = flac.get('artist', [""])[0]
+    title = flac.get('title', [""])[0]
+    if artist:
+        print(f"Artist: {artist}")
+    else:
+        artist = input("Artist: ")
+        flac['artist'] = artist
+    if title:
+        print(f"Title: {title}")
+    else:
+        title = input("Title: ")
+        flac['title'] = title
+    flac.save()
+    db.update_track_state(track.id, 'tagged')
 
 
 def main():
@@ -52,7 +98,10 @@ def main():
     parser.add_argument("--user", type=int, help="The user ID of the SoundCloud account to download likes from")
     parser.add_argument("--client_id", type=str, help="The SoundCloud client ID to use for API requests. If not provided, one will be scraped from the website")
     parser.add_argument("--auth_token", type=str, help="OAuth token for Soundcloud. Grab it from your browser console if you want to use soundcloud-native downloads")
+    parser.add_argument("--db", type=str, default="sqlite:///soundklau.db", help="Path of the sqlite DB")
     args = parser.parse_args()
+    
+    db.setup_db(args.db)
 
     if args.client_id is not None:
         soundcloud.set_client_id(args.client_id)
@@ -70,4 +119,11 @@ def main():
     print(f"Found {len(tracks)} new tracks")
     for track in tracks:
         download_track(track)
-        
+    
+    tracks = db.find_tracks_by_state('downloaded')
+    for track in tracks:
+        convert_track(track)
+    
+    tracks = db.find_tracks_by_state('converted')
+    for track in tracks:
+        tag_track(track)

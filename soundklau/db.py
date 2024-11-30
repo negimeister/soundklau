@@ -1,10 +1,22 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from soundklau.models import LikedTrack
+from alembic import command
+from alembic.config import Config
+import os
 
 DATABASE_URL = "sqlite:///soundklau.db"
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = None
+SessionLocal = None
+
+
+
+def setup_db(path):
+    global engine
+    global SessionLocal
+    engine = create_engine(path)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    
 
 def store_liked_tracks(likes):
     session = SessionLocal()
@@ -27,7 +39,8 @@ def store_liked_tracks(likes):
                 purchase_url=track.get('purchase_url', None),
                 description=track.get('description', None),
                 state='new',
-                liked_at=like['created_at']
+                liked_at=like['created_at'],
+                download_path=None
             )
             session.add(liked_track)
             count+=1
@@ -71,6 +84,40 @@ def update_track_state(track_id, new_state):
     except Exception as e:
         print(f"Error updating track state: {e}")
     
+    finally:
+        session.close()
+
+def update_track_download_path(track_id, download_path):
+    session = SessionLocal()
+    
+    try:
+        # Query the record from the LikedTrack table
+        track = session.query(LikedTrack).filter_by(id=track_id).first()
+        
+        # Update the download path of the track
+        if track:
+            track.download_path = download_path
+            session.commit()
+        else:
+            print(f"Track {track_id} not found")
+    
+    except Exception as e:
+        print(f"Error updating track download path: {e}")
+    
+    finally:
+        session.close()
+
+def find_track_by_id(track_id):
+    session = SessionLocal()
+    
+    try:
+        # Query the record from the LikedTrack table
+        track = session.query(LikedTrack).filter_by(id=track_id).first()
+        return track
+    
+    except Exception as e:
+        print(f"Error finding track by id: {e}")
+        return None
     finally:
         session.close()
 

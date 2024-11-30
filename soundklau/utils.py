@@ -48,3 +48,22 @@ def print_urls(urls):
     
     # Print the table
     console.print(table)
+
+def prompt_yes_no(question):
+    """
+    Prompt the user with a yes/no question.
+
+    Args:
+        question (str): The question to ask the user.
+
+    Returns:
+        bool: True if the user answered "yes", False if the user answered "no".
+    """
+    while True:
+        answer = input(f"{question} (y/n) ").lower()
+        if answer in ['y', 'yes']:
+            return True
+        elif answer in ['n', 'no']:
+            return False
+        else:
+            print("Please enter 'y' or 'n'")

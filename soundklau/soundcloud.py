@@ -7,6 +7,7 @@ from urllib.request import urlopen, Request
 from bs4 import BeautifulSoup
 import json
 from urllib.parse import unquote
+import os
 
 
 SC_TRACK_RESOLVE_REGEX = r"^(?:https?:\/\/)soundcloud\.com\/[a-z0-9](?!.*?(-|_){2})[\w-]{1,23}[a-z0-9]\/[^\s]+$"
@@ -36,15 +37,39 @@ def eprint(*values, **kwargs):
     """ Print to stderr """
     print(*values, file=sys.stderr, **kwargs)
 
+
+def parse_content_disposition(header):
+    """
+    Parses a Content-Disposition header and extracts the UTF-8 filename if available.
+    """
+    utf8_filename = None
+    fallback_filename = None
+
+    # Split the header into parts
+    parts = header.split(';')
+    for part in parts:
+        part = part.strip()
+
+        # Match filename*=utf-8''... pattern
+        if part.lower().startswith("filename*="):
+            match = re.match(r"filename\*\s*=\s*utf-8''(.+)", part, re.IGNORECASE)
+            if match:
+                utf8_filename = unquote(match.group(1))
+
+        # Match regular filename="..." pattern
+        elif part.lower().startswith('filename='):
+            match = re.match(r'filename\s*=\s*"(.+)"', part, re.IGNORECASE)
+            if match:
+                fallback_filename = match.group(1)
+
+    # Prefer utf-8 filename* if available, otherwise fallback to filename
+    return utf8_filename or fallback_filename
+
 def get_filename_from_header(headers):
     content_disposition = headers.get("Content-Disposition")
     if content_disposition:
         # Extract filename from the Content-Disposition header
-        parts = content_disposition.split(";")
-        for part in parts:
-            if "filename=" in part:
-                filename = part.split("=", 1)[1].strip().strip('"')
-                return unquote(filename)
+        return parse_content_disposition(content_disposition)
     return None
 
 def download_file(url):
@@ -136,7 +161,7 @@ def fetch_liked_tracks(user_id):
         all_likes.extend(response['collection'])
     return all_likes
 
-def download_track(track_id):
+def download_track(track_id, folder):
     base_url = f"https://api-v2.soundcloud.com/tracks/{track_id}/download"
     params = {
         "app_version": 1732529162,
@@ -145,7 +170,10 @@ def download_track(track_id):
     url =  base_url + "?" + "&".join([f"{key}={value}" for key, value in params.items()])
     downloadUrl = api_get(url)['redirectUri']
     data, suggested_filename = download_file(downloadUrl)
-    f = open(suggested_filename, "wb")
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+    path = os.path.join(folder, suggested_filename)
+    f = open(path, "wb")
     f.write(data)    
     f.close()
-    return suggested_filename
+    return path
